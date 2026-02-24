@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter_file_dialog/flutter_file_dialog.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
@@ -50,21 +52,76 @@ class _CamPageState extends State<CamPage> {
   }
 
   Future<void> _saveFileToUserStorage(String text) async {
-    final outputPath = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save OCR Text',
-      fileName: 'document.txt',
-      type: FileType.custom,
-      allowedExtensions: ['txt'],
+    final controller = TextEditingController(text: 'document.txt');
+    String? fileName;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Save as'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'File name',
+            hintText: 'document.txt',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+          onSubmitted: (value) {
+            var name = value.trim();
+            if (name.isEmpty) name = 'document.txt';
+            if (!name.endsWith('.txt')) name = '$name.txt';
+            fileName = name;
+            Navigator.pop(context);
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              var name = controller.text.trim();
+              if (name.isEmpty) name = 'document.txt';
+              if (!name.endsWith('.txt')) name = '$name.txt';
+              fileName = name;
+              Navigator.pop(context);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
     );
+    controller.dispose();
 
-    if (outputPath != null) {
-      final file = File(outputPath);
-      await file.writeAsString(text);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Saved at: $outputPath')),
-        );
+    if (fileName == null || !mounted) return;
+
+    String? outputPath;
+
+    if (Platform.isAndroid || Platform.isIOS) {
+      outputPath = await FlutterFileDialog.saveFile(
+        params: SaveFileDialogParams(
+          data: Uint8List.fromList(text.codeUnits),
+          fileName: fileName,
+          mimeTypesFilter: ['text/plain'],
+        ),
+      );
+    } else {
+      outputPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save OCR Text',
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: ['txt'],
+      );
+      if (outputPath != null) {
+        await File(outputPath).writeAsString(text);
       }
+    }
+
+    if (outputPath != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Saved at: $outputPath')),
+      );
     }
   }
 

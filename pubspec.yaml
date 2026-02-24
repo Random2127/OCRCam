@@ -38,6 +38,7 @@ dependencies:
   google_ml_kit: ^0.21.0
   path_provider: ^2.1.5
   file_picker: ^10.3.10
+  flutter_file_dialog: ^3.0.3
   image_picker: ^1.2.1
   image: ^4.8.0
 
