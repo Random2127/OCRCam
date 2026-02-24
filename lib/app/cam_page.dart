@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:camera/camera.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import 'camera_controller.dart' as ocr;
@@ -17,10 +17,13 @@ class _CamPageState extends State<CamPage> {
   CameraController? _controller;
   List<CameraDescription>? _cameras;
   bool _isProcessing = false;
+  String? _extractedText;
+  late final TextEditingController _textController;
 
   @override
   void initState() {
     super.initState();
+    _textController = TextEditingController();
     _initializeCamera();
   }
 
@@ -39,7 +42,27 @@ class _CamPageState extends State<CamPage> {
   @override
   void dispose() {
     _controller?.dispose();
+    _textController.dispose();
     super.dispose();
+  }
+
+  Future<void> _saveFileToUserStorage(String text) async {
+    final outputPath = await FilePicker.platform.saveFile(
+      dialogTitle: 'Save OCR Text',
+      fileName: 'document.txt',
+      type: FileType.custom,
+      allowedExtensions: ['txt'],
+    );
+
+    if (outputPath != null) {
+      final file = File(outputPath);
+      await file.writeAsString(text);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Saved at: $outputPath')),
+        );
+      }
+    }
   }
 
   Future<File> _takePicture() async {
@@ -66,16 +89,13 @@ class _CamPageState extends State<CamPage> {
     try {
       final imageFile = await _takePicture();
       final text = await ocr.extractText(imageFile);
-      await ocr.saveToFile(text);
-
-      final dir = await getApplicationDocumentsDirectory();
-      final path = '${dir.path}/ocr_output.txt';
 
       if (mounted) {
-        setState(() => _isProcessing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Saved to: $path')),
-        );
+        setState(() {
+          _isProcessing = false;
+          _extractedText = text;
+          _textController.text = text;
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -89,6 +109,10 @@ class _CamPageState extends State<CamPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_extractedText != null) {
+      return _buildTextEditor();
+    }
+
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) {
       return const Scaffold(
@@ -115,6 +139,54 @@ class _CamPageState extends State<CamPage> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Text('Scan'),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTextEditor() {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('OCR Result'),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await _saveFileToUserStorage(_textController.text);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: TextField(
+                controller: _textController,
+                maxLines: null,
+                expands: true,
+                textAlignVertical: TextAlignVertical.top,
+                decoration: const InputDecoration(
+                  hintText: 'Edit extracted text...',
+                  border: OutlineInputBorder(),
+                  alignLabelWithHint: true,
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () {
+                  setState(() => _extractedText = null);
+                },
+                child: const Text('Scan Again'),
               ),
             ),
           ),
