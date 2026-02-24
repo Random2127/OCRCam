@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 
@@ -18,6 +19,7 @@ class _CamPageState extends State<CamPage> {
   CameraController? _controller;
   List<CameraDescription>? _cameras;
   bool _isProcessing = false;
+  final ImagePicker _picker = ImagePicker();
   String? _extractedText;
   late final TextEditingController _textController;
 
@@ -64,6 +66,17 @@ class _CamPageState extends State<CamPage> {
         );
       }
     }
+  }
+
+  Future<File?> _pickFromGallery() async {
+    final XFile? pickedFile = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 100,
+    );
+
+    if (pickedFile == null) return null;
+
+    return File(pickedFile.path);
   }
 
   Future<File> _takePicture() async {
@@ -130,6 +143,39 @@ class _CamPageState extends State<CamPage> {
     }
   }
 
+  Future<void> _processGalleryImage() async {
+    if (_isProcessing) return;
+
+    setState(() => _isProcessing = true);
+
+    try {
+      final imageFile = await _pickFromGallery();
+
+      if (imageFile == null) {
+        if (mounted) setState(() => _isProcessing = false);
+        return;
+      }
+
+      final processedImage = await _preprocessImage(imageFile);
+      final text = await ocr.extractText(processedImage);
+
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+          _extractedText = text;
+          _textController.text = text;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isProcessing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_extractedText != null) {
@@ -152,18 +198,30 @@ class _CamPageState extends State<CamPage> {
             bottom: 40,
             left: 0,
             right: 0,
-            child: Center(
-              child: ElevatedButton(
-                onPressed: _isProcessing ? null : _processImage,
-                child: _isProcessing
-                    ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Scan'),
-              ),
-            ),
+            child: _isProcessing
+                ? const Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        ElevatedButton(
+                          onPressed: _processImage,
+                          child: const Text('Scan with Camera'),
+                        ),
+                        ElevatedButton(
+                          onPressed: _processGalleryImage,
+                          child: const Text('Select from Gallery'),
+                        ),
+                      ],
+                    ),
+                  ),
           ),
         ],
       ),
