@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 
 import 'camera_controller.dart' as ocr;
 
@@ -74,6 +75,27 @@ class _CamPageState extends State<CamPage> {
     return File(image.path);
   }
 
+  Future<File> _preprocessImage(File file) async {
+    final original = await img.decodeImageFile(file.path);
+    if (original == null) throw StateError('Failed to decode image');
+
+    final grayscale = img.grayscale(original);
+    final contrast = img.adjustColor(
+      grayscale,
+      contrast: 1.5,
+    );
+    final thresholded = img.luminanceThreshold(
+      contrast,
+      threshold: 140 / 255,
+    );
+
+    final processedBytes = img.encodeJpg(thresholded);
+    final processedFile = File('${file.path}_processed.jpg');
+    await processedFile.writeAsBytes(processedBytes);
+
+    return processedFile;
+  }
+
   Future<void> _processImage() async {
     if (_isProcessing) return;
     final controller = _controller;
@@ -87,8 +109,9 @@ class _CamPageState extends State<CamPage> {
     setState(() => _isProcessing = true);
 
     try {
-      final imageFile = await _takePicture();
-      final text = await ocr.extractText(imageFile);
+      final rawImage = await _takePicture();
+      final processedImage = await _preprocessImage(rawImage);
+      final text = await ocr.extractText(processedImage);
 
       if (mounted) {
         setState(() {
